@@ -15,6 +15,7 @@ export async function OPTIONS() {
 
 export async function GET() {
   try {
+    const PROMO_START_DATE = '2026-11-14T00:00:00.000Z';
     const PROMO_MAX_SLOTS = 10;
     const PROD_VET_KEY = 'axioma-vet';
 
@@ -31,19 +32,21 @@ export async function GET() {
     let manualApprovedCount = 0;
 
     if (productId) {
-      // 2. Count grants
+      // 2. Count grants granted from launch promo start
       const { count: grantsCount } = await supabaseAdmin
         .from('early_access_grants')
         .select('*', { count: 'exact', head: true })
-        .eq('product_id', productId);
+        .eq('product_id', productId)
+        .gte('granted_at', PROMO_START_DATE);
       earlyGrantsCount = grantsCount || 0;
 
-      // 3. Count approved manual payments for Vet
+      // 3. Count approved manual payments for Vet from launch promo start
       const { count: manualCount } = await supabaseAdmin
         .from('manual_payments')
         .select('*', { count: 'exact', head: true })
         .eq('product_id', productId)
-        .eq('status', 'APPROVED');
+        .eq('status', 'APPROVED')
+        .gte('created_at', PROMO_START_DATE);
       manualApprovedCount = manualCount || 0;
     }
 
