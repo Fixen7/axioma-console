@@ -1,28 +1,138 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  ShieldAlert, 
   Send, 
   CheckCircle2, 
   XCircle, 
   Activity, 
-  Terminal, 
-  Database, 
   CreditCard, 
-  Layers, 
+  Lock, 
+  RefreshCw, 
+  FileCheck, 
+  Clock, 
   ExternalLink,
-  Radio,
-  Lock,
-  Copy,
-  Check
+  Server,
+  AlertTriangle,
+  BadgeAlert,
+  Sparkles
 } from 'lucide-react';
 
+interface PaymentItem {
+  id: string;
+  workspaceName: string;
+  productName: string;
+  planName: string;
+  paymentMethod: string;
+  amount: number;
+  currency: string;
+  reference: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+  isDemo: boolean;
+}
+
 export default function ConsoleDashboard() {
-  const [testing, setTesting] = useState(false);
+  // Auth PIN
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [pinInput, setPinInput] = useState<string>('');
+  const [pinError, setPinError] = useState<boolean>(false);
+
+  // Tabs
+  const [activeTab, setActiveTab] = useState<'payments' | 'uptime' | 'telemetry'>('payments');
+
+  // Payments State
+  const [payments, setPayments] = useState<PaymentItem[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState<boolean>(false);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // Uptime State
+  const [uptimeData, setUptimeData] = useState<any>(null);
+  const [loadingUptime, setLoadingUptime] = useState<boolean>(false);
+
+  // Telemetry Tester State
+  const [testing, setTesting] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<'database' | 'payments' | 'build' | 'auth'>('database');
-  const [copied, setCopied] = useState(false);
+
+  // Load session from localStorage
+  useEffect(() => {
+    const savedPin = localStorage.getItem('axioma_console_auth');
+    if (savedPin === 'granted') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  // Fetch Payments
+  const fetchPayments = async () => {
+    setLoadingPayments(true);
+    try {
+      const res = await fetch('/api/payments');
+      if (res.ok) {
+        const data = await res.json();
+        setPayments(data);
+      }
+    } catch (err) {
+      console.error('Error cargando pagos:', err);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
+  // Run Uptime Check
+  const runUptimeCheck = async () => {
+    setLoadingUptime(true);
+    try {
+      const res = await fetch('/api/cron/uptime');
+      const data = await res.json();
+      setUptimeData(data);
+    } catch (err) {
+      console.error('Error corriendo uptime:', err);
+    } finally {
+      setLoadingUptime(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchPayments();
+      runUptimeCheck();
+    }
+  }, [isAuthenticated]);
+
+  const handlePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinInput === 'axiomadev2026') {
+      setIsAuthenticated(true);
+      localStorage.setItem('axioma_console_auth', 'granted');
+      setPinError(false);
+    } else {
+      setPinError(true);
+    }
+  };
+
+  const handleAction = async (id: string, action: 'APPROVE' | 'REJECT') => {
+    setProcessingId(id);
+    try {
+      const res = await fetch(`/api/payments/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        // Actualizar lista local
+        setPayments((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED' } : p))
+        );
+      } else {
+        alert('Error al procesar la acción.');
+      }
+    } catch (err) {
+      alert('Error de red al actualizar estado.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   const handleSendTestAlert = async () => {
     setTesting(true);
@@ -86,7 +196,7 @@ export default function ConsoleDashboard() {
       if (res.ok && data.success) {
         setTestResult({
           success: true,
-          message: `¡Alerta enviada exitosamente a tu Telegram! (Mensaje ID: ${data.messageId || 'OK'})`
+          message: `¡Alerta enviada a tu Telegram con éxito! (Mensaje ID: ${data.messageId || 'OK'})`
         });
       } else {
         setTestResult({
@@ -104,26 +214,47 @@ export default function ConsoleDashboard() {
     }
   };
 
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  // Pantalla de bloqueo con PIN
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#090d16] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
+          <div className="w-14 h-14 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 text-indigo-400">
+            <Lock className="w-7 h-7" />
+          </div>
+          <h1 className="text-xl font-bold text-center text-white mb-2">Axioma Console</h1>
+          <p className="text-xs text-slate-400 text-center mb-6">
+            Ingresa tu clave maestra de administrador para acceder al centro de mando.
+          </p>
 
-  const codeSnippet = `// Enviar alertas desde cualquier app satélite (VET, Stock, etc.)
-await fetch('https://console.axiomadynamics.com/api/telemetry', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    appId: 'axioma-vet',
-    category: 'database',
-    severity: 'critical',
-    title: 'Error de Supabase',
-    message: error.message,
-    code: error.code,
-    table: 'patients'
-  })
-});`;
+          <form onSubmit={handlePinSubmit} className="space-y-4">
+            <div>
+              <input
+                type="password"
+                placeholder="Ingresa tu PIN maestro"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                className={`w-full px-4 py-3 rounded-xl bg-slate-950 border ${
+                  pinError ? 'border-red-500 ring-1 ring-red-500' : 'border-slate-800 focus:border-indigo-500'
+                } text-white text-sm outline-none transition-all placeholder:text-slate-600`}
+                autoFocus
+              />
+              {pinError && (
+                <p className="text-xs text-red-400 mt-2">PIN incorrecto. Intenta de nuevo.</p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-medium text-sm transition-all shadow-lg shadow-indigo-600/20"
+            >
+              Desbloquear Consola
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#090d16] text-slate-100 p-6 md:p-12">
@@ -139,40 +270,247 @@ await fetch('https://console.axiomadynamics.com/api/telemetry', {
               </span>
             </div>
             <p className="text-sm text-slate-400 mt-1">
-              Centro de Mando Técnico, Telemetría y Monitoreo Desacoplado
+              Centro de Mando Técnico, Pagos y Telemetría Desacoplado
             </p>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              Telegram Bot Conectado
+              Telegram Bot Online
             </div>
-            <div className="text-xs text-slate-400 font-mono bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
-              ID: 6022360968
-            </div>
+            <button
+              onClick={() => {
+                localStorage.removeItem('axioma_console_auth');
+                setIsAuthenticated(false);
+              }}
+              className="text-xs text-slate-400 hover:text-white bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Bloquear
+            </button>
           </div>
         </header>
 
-        {/* BENTO GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* NAVIGATION TABS */}
+        <div className="flex gap-2 border-b border-slate-800/80 pb-3">
+          <button
+            onClick={() => setActiveTab('payments')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all ${
+              activeTab === 'payments'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <CreditCard className="w-4 h-4" />
+            Pagos y Demos por Confirmar
+            {payments.filter((p) => p.status === 'PENDING').length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">
+                {payments.filter((p) => p.status === 'PENDING').length}
+              </span>
+            )}
+          </button>
 
-          {/* CARD 1: TESTER DE TELEMETRÍA (2 COLUMNAS) */}
-          <div className="md:col-span-2 bg-slate-900/60 border border-slate-800 rounded-2xl p-6 relative overflow-hidden backdrop-blur-sm">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                <Send className="w-5 h-5" />
-              </div>
+          <button
+            onClick={() => setActiveTab('uptime')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all ${
+              activeTab === 'uptime'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <Server className="w-4 h-4" />
+            Uptime & Salud de Servidores
+          </button>
+
+          <button
+            onClick={() => setActiveTab('telemetry')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all ${
+              activeTab === 'telemetry'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <Send className="w-4 h-4" />
+            Simulador de Telemetría
+          </button>
+        </div>
+
+        {/* TAB 1: PAGOS Y DEMOS POR CONFIRMAR */}
+        {activeTab === 'payments' && (
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm space-y-6">
+            <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-white">Disparador de Telemetría a Telegram</h2>
-                <p className="text-xs text-slate-400">Prueba la entrega inmediata de alertas críticas a tu celular</p>
+                <h2 className="text-lg font-semibold text-white">Transferencias y Solicitudes de Demo</h2>
+                <p className="text-xs text-slate-400">
+                  Revisa los números de comprobante antes de activar la cuenta de la clínica
+                </p>
               </div>
+              <button
+                onClick={fetchPayments}
+                disabled={loadingPayments}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingPayments ? 'animate-spin' : ''}`} />
+                Actualizar
+              </button>
             </div>
 
-            <div className="space-y-4 mt-6">
+            {loadingPayments ? (
+              <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-indigo-500/40 border-t-indigo-500 rounded-full animate-spin" />
+                Cargando registros desde Supabase...
+              </div>
+            ) : payments.length === 0 ? (
+              <div className="p-12 text-center border border-dashed border-slate-800 rounded-xl text-slate-500 text-sm">
+                No hay transferencias ni solicitudes de demo registradas en este momento.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400 font-medium">
+                      <th className="py-3 px-4">Clínica / Negocio</th>
+                      <th className="py-3 px-4">Tipo / Plan</th>
+                      <th className="py-3 px-4">Monto</th>
+                      <th className="py-3 px-4">Nº Comprobante / Ref</th>
+                      <th className="py-3 px-4">Fecha</th>
+                      <th className="py-3 px-4">Estado</th>
+                      <th className="py-3 px-4 text-right">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {payments.map((p) => (
+                      <tr key={p.id} className="hover:bg-slate-800/20 transition-colors">
+                        <td className="py-3.5 px-4 font-semibold text-white">
+                          {p.workspaceName}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                            p.isDemo ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-slate-800 text-slate-300'
+                          }`}>
+                            {p.productName} • {p.planName}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono font-medium text-emerald-400">
+                          {p.amount === 0 ? 'GRATIS (DEMO)' : `$${(p.amount / 100).toFixed(2)} ${p.currency}`}
+                        </td>
+                        <td className="py-3.5 px-4 font-mono font-semibold text-indigo-300">
+                          {p.reference}
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-400">
+                          {new Date(p.createdAt).toLocaleDateString('es-ES')}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase ${
+                            p.status === 'APPROVED'
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : p.status === 'REJECTED'
+                              ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                              : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                          }`}>
+                            {p.status}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          {p.status === 'PENDING' ? (
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleAction(p.id, 'APPROVE')}
+                                disabled={processingId === p.id}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-all disabled:opacity-50"
+                              >
+                                Aprobar
+                              </button>
+                              <button
+                                onClick={() => handleAction(p.id, 'REJECT')}
+                                disabled={processingId === p.id}
+                                className="px-2.5 py-1 rounded-lg bg-red-600/30 hover:bg-red-600 text-red-200 font-medium text-xs transition-all disabled:opacity-50"
+                              >
+                                Rechazar
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-500 text-xs">Revisado</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: UPTIME & CRON MONITOR */}
+        {activeTab === 'uptime' && (
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Vigilancia Continua de Servidores</h2>
+                <p className="text-xs text-slate-400">
+                  Un Cron Job se ejecuta automáticamente en Vercel y te alerta a Telegram ante cualquier caída.
+                </p>
+              </div>
+              <button
+                onClick={runUptimeCheck}
+                disabled={loadingUptime}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingUptime ? 'animate-spin' : ''}`} />
+                Ejecutar Ping Ahora
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[
+                { name: 'Axioma Vet', url: 'https://vet.axiomadynamics.com', key: 'Axioma Vet' },
+                { name: 'Axioma Core / Portal', url: 'https://app.axiomadynamics.com', key: 'Axioma Core / Portal' },
+                { name: 'Supabase Database', url: 'gnfyveyqhjsugdlxnupx.supabase.co', key: 'Supabase Cloud Database' },
+              ].map((svc) => {
+                const res = uptimeData?.results?.[svc.key];
+                const isHealthy = res?.status === 'healthy';
+
+                return (
+                  <div key={svc.name} className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm text-white">{svc.name}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        isHealthy ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                      }`}>
+                        {isHealthy ? 'ONLINE (200 OK)' : res ? 'CAÍDO' : 'PENDIENTE'}
+                      </span>
+                    </div>
+                    <p className="text-xs font-mono text-slate-500 truncate">{svc.url}</p>
+                    {res?.latencyMs && (
+                      <p className="text-[11px] text-slate-400">Latencia: <span className="text-indigo-400 font-mono">{res.latencyMs}ms</span></p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 flex items-center gap-3">
+              <Clock className="w-5 h-5 text-indigo-400 shrink-0" />
+              <span>
+                <strong>Programación automática:</strong> Configurado en <code>vercel.json</code> cada 10 minutos. Si un servicio se cae o da timeout, la alerta te llega directamente a Telegram con el reporte formateado.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: SIMULADOR DE TELEMETRÍA */}
+        {activeTab === 'telemetry' && (
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Disparador de Telemetría a Telegram</h2>
+              <p className="text-xs text-slate-400">Prueba la entrega inmediata de alertas críticas a tu celular</p>
+            </div>
+
+            <div className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-slate-400 mb-2 block">
                   Selecciona el tipo de incidente a simular:
@@ -235,82 +573,7 @@ await fetch('https://console.axiomadynamics.com/api/telemetry', {
               )}
             </div>
           </div>
-
-          {/* CARD 2: ESTADO DE APLICACIONES */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <Activity className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-white">Ecosistema</h2>
-                  <p className="text-xs text-slate-400">Servicios y estado en tiempo real</p>
-                </div>
-              </div>
-
-              <div className="space-y-3 mt-4">
-                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/40 border border-slate-800 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span className="font-medium">Axioma Vet</span>
-                  </div>
-                  <span className="text-slate-400">vet.axiomadynamics.com</span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/40 border border-slate-800 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span className="font-medium">Axioma Core</span>
-                  </div>
-                  <span className="text-slate-400">app.axiomadynamics.com</span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/40 border border-slate-800 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span className="font-medium">Hostinger DNS</span>
-                  </div>
-                  <span className="text-emerald-400 font-mono">OK (300s TTL)</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-slate-800/80 text-[11px] text-slate-500">
-              Arquitectura desacoplada: Si esta consola se reinicia, ni VET ni CORE sufren caídas.
-            </div>
-          </div>
-
-          {/* CARD 3: CÓMO CONECTAR APPS SATÉLITE (3 COLUMNAS) */}
-          <div className="md:col-span-3 bg-slate-900/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                  <Terminal className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-white">Integración Externa por API</h2>
-                  <p className="text-xs text-slate-400">
-                    Endpoint público de telemetría sin credenciales expuestas en el cliente
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => copyCode(codeSnippet)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-colors"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? 'Copiado' : 'Copiar Snippet'}
-              </button>
-            </div>
-
-            <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 font-mono text-xs overflow-x-auto leading-relaxed">
-              <code>{codeSnippet}</code>
-            </pre>
-          </div>
-
-        </div>
+        )}
 
       </div>
     </div>
