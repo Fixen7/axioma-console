@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { sql } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,37 +19,34 @@ export async function GET() {
     const PROMO_MAX_SLOTS = 10;
     const PROD_VET_KEY = 'axioma-vet';
 
-    // 1. Get Vet product ID
-    const { data: products } = await supabaseAdmin
-      .from('products')
-      .select('id')
-      .eq('key', PROD_VET_KEY)
-      .limit(1);
-
+    // 1. Obtener ID del producto Vet
+    const products = await sql`
+      SELECT id FROM "products" WHERE key = ${PROD_VET_KEY} LIMIT 1
+    `;
     const productId = products?.[0]?.id;
 
     let earlyGrantsCount = 0;
     let manualApprovedCount = 0;
 
     if (productId) {
-      // 2. Count grants granted from launch promo start
-      const { count: grantsCount } = await supabaseAdmin
-        .from('early_access_grants')
-        .select('*', { count: 'exact', head: true })
-        .eq('product_id', productId)
-        .gte('granted_at', PROMO_START_DATE);
-      earlyGrantsCount = grantsCount || 0;
+      // 2. Conteo de accesos tempranos otorgados
+      const grants = await sql`
+        SELECT count(*)::int as count 
+        FROM "early_access_grants" 
+        WHERE product_id = ${productId} AND granted_at >= ${PROMO_START_DATE}
+      `;
+      earlyGrantsCount = grants?.[0]?.count || 0;
 
-      // 3. Count approved manual payments for Vet from launch promo start
-      const { count: manualCount } = await supabaseAdmin
-        .from('manual_payments')
-        .select('*', { count: 'exact', head: true })
-        .eq('product_id', productId)
-        .eq('status', 'APPROVED')
-        .gte('created_at', PROMO_START_DATE);
-      manualApprovedCount = manualCount || 0;
+      // 3. Conteo de pagos manuales aprobados desde el inicio de la promo
+      const manual = await sql`
+        SELECT count(*)::int as count 
+        FROM "manual_payments" 
+        WHERE product_id = ${productId} AND status = 'APPROVED' AND created_at >= ${PROMO_START_DATE}
+      `;
+      manualApprovedCount = manual?.[0]?.count || 0;
     }
 
+    // Regla de oro: Máximo entre accesos y pagos manuales (para evitar doble conteo)
     const paidUsersCount = Math.max(earlyGrantsCount, manualApprovedCount);
     const remainingSlots = Math.max(0, PROMO_MAX_SLOTS - paidUsersCount);
     const isPromoActive = remainingSlots > 0;
@@ -85,6 +82,7 @@ export async function GET() {
       },
     });
   } catch (error: any) {
+    console.error('[API Promo Vet] Error:', error);
     return NextResponse.json(
       {
         error: error.message || 'Failed to fetch promo status',

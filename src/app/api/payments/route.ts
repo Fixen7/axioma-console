@@ -1,39 +1,38 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { sql } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    // Consultar pagos manuales o solicitudes de demo pendientes
-    const { data: payments, error } = await supabaseAdmin
-      .from('manual_payments')
-      .select(`
-        id,
-        payment_method,
-        amount,
-        currency,
-        reference,
-        payment_id,
-        status,
-        created_at,
-        workspace:workspaces(id, name),
-        product:products(id, name),
-        plan:plans(id, name)
-      `)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('[Console Payments] Error consultando pagos:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    // Consultar pagos manuales o solicitudes de demo pendientes con joins SQL puros
+    const rows = await sql`
+      SELECT 
+        mp.id,
+        mp.payment_method,
+        mp.amount,
+        mp.currency,
+        mp.reference,
+        mp.payment_id,
+        mp.status,
+        mp.created_at,
+        w.name as workspace_name,
+        pr.name as product_name,
+        pl.name as plan_name
+      FROM "manual_payments" mp
+      LEFT JOIN "workspaces" w ON mp.workspace_id = w.id
+      LEFT JOIN "products" pr ON mp.product_id = pr.id
+      LEFT JOIN "plans" pl ON mp.plan_id = pl.id
+      ORDER BY mp.created_at DESC
+      LIMIT 100
+    `;
 
     // Normalizar datos para la interfaz
-    const normalized = (payments || []).map((p: any) => ({
+    const normalized = rows.map((p: any) => ({
       id: p.id,
-      workspaceName: p.workspace?.name || 'Clínica Sin Nombre',
-      productName: p.product?.name || 'Axioma App',
-      planName: p.plan?.name || (p.amount === 0 ? 'Acceso Demo' : 'Plan Estándar'),
+      workspaceName: p.workspace_name || 'Clínica Sin Nombre',
+      productName: p.product_name || 'Axioma App',
+      planName: p.plan_name || (p.amount === 0 ? 'Acceso Demo' : 'Plan Estándar'),
       paymentMethod: p.payment_method || 'TRANSFER',
       amount: p.amount,
       currency: p.currency || 'USD',
