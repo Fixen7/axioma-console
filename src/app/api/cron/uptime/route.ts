@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,16 +82,31 @@ export async function GET() {
           await dispatchTelegramAlert(target.name, err, `URL: ${target.url}`);
         }
       } else if (target.type === 'database') {
-        const dbRes = await sql`SELECT 1 as live`;
-        const latency = Date.now() - start;
+        if (process.env.DATABASE_URL) {
+          const dbRes = await sql`SELECT 1 as live`;
+          const latency = Date.now() - start;
 
-        if (dbRes && dbRes[0]?.live === 1) {
-          results[target.name] = { status: 'healthy', latencyMs: latency };
+          if (dbRes && dbRes[0]?.live === 1) {
+            results[target.name] = { status: 'healthy', latencyMs: latency };
+          } else {
+            const err = 'Consulta de verificación devolvió resultado inesperado';
+            results[target.name] = { status: 'down', latencyMs: latency, error: err };
+            failures.push(`${target.name} (${err})`);
+            await dispatchTelegramAlert(target.name, err);
+          }
         } else {
-          const err = 'Consulta de verificación devolvió resultado inesperado';
-          results[target.name] = { status: 'down', latencyMs: latency, error: err };
-          failures.push(`${target.name} (${err})`);
-          await dispatchTelegramAlert(target.name, err);
+          // Si DATABASE_URL no está configurada, verificar disponibilidad mediante la API de Supabase
+          const { error } = await supabaseAdmin.from('workspaces').select('id').limit(1);
+          const latency = Date.now() - start;
+
+          if (!error) {
+            results[target.name] = { status: 'healthy', latencyMs: latency };
+          } else {
+            const err = `Base de datos inaccesible: ${error.message}`;
+            results[target.name] = { status: 'down', latencyMs: latency, error: err };
+            failures.push(`${target.name} (${err})`);
+            await dispatchTelegramAlert(target.name, err);
+          }
         }
       }
     } catch (err: any) {
