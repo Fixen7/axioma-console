@@ -172,8 +172,9 @@ export default function ConsoleDashboard() {
   const handleAction = async (id: string, action: 'APPROVE' | 'REJECT', reason?: string) => {
     if (action === 'APPROVE') {
       const p = payments.find((item) => item.id === id);
+      const intervalLabel = (p as any)?.billingInterval === 'year' ? '1 año (facturación anual)' : '1 mes (facturación mensual)';
       const confirmApprove = window.confirm(
-        `¿Confirmas la aprobación del pago de "${p?.workspaceName || 'esta clínica'}" por $${((p?.amount || 0) / 100).toFixed(2)} USD?\n\nAl aprobar, se concederá acceso inmediato al sistema y suscripción activa.`
+        `¿Confirmas la aprobación del comprobante de "${p?.workspaceName || 'esta clínica'}" por $${((p?.amount || 0) / 100).toFixed(2)} USD?\n\nAl aprobar, se concederá acceso inmediato al sistema y la suscripción comenzará a contar por ${intervalLabel} hasta su fecha de corte.`
       );
       if (!confirmApprove) return;
     }

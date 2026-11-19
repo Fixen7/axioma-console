@@ -22,11 +22,13 @@ export async function GET() {
             mp.created_at,
             w.name as workspace_name,
             pr.name as product_name,
-            pl.name as plan_name
+            pl.name as plan_name,
+            prc.billing_interval
           FROM "manual_payments" mp
           LEFT JOIN "workspaces" w ON mp.workspace_id = w.id
           LEFT JOIN "products" pr ON mp.product_id = pr.id
           LEFT JOIN "plans" pl ON mp.plan_id = pl.id
+          LEFT JOIN "prices" prc ON mp.price_id = prc.id
           ORDER BY mp.created_at DESC
           LIMIT 100
         `;
@@ -50,7 +52,8 @@ export async function GET() {
           created_at,
           workspace_id,
           product_id,
-          plan_id
+          plan_id,
+          price_id
         `)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -63,22 +66,26 @@ export async function GET() {
         const workspaceIds = [...new Set(rawPayments.map(r => r.workspace_id).filter(Boolean))];
         const productIds = [...new Set(rawPayments.map(r => r.product_id).filter(Boolean))];
         const planIds = [...new Set(rawPayments.map(r => r.plan_id).filter(Boolean))];
+        const priceIds = [...new Set(rawPayments.map(r => r.price_id).filter(Boolean))];
 
-        const [wsRes, prRes, plRes] = await Promise.all([
+        const [wsRes, prRes, plRes, prcRes] = await Promise.all([
           workspaceIds.length ? supabaseAdmin.from('workspaces').select('id, name').in('id', workspaceIds) : { data: [] },
           productIds.length ? supabaseAdmin.from('products').select('id, name').in('id', productIds) : { data: [] },
           planIds.length ? supabaseAdmin.from('plans').select('id, name').in('id', planIds) : { data: [] },
+          priceIds.length ? supabaseAdmin.from('prices').select('id, billing_interval').in('id', priceIds) : { data: [] },
         ]);
 
         const wsMap = new Map((wsRes.data || []).map((w: any) => [w.id, w.name]));
         const prMap = new Map((prRes.data || []).map((p: any) => [p.id, p.name]));
         const plMap = new Map((plRes.data || []).map((p: any) => [p.id, p.name]));
+        const prcMap = new Map((prcRes.data || []).map((p: any) => [p.id, p.billing_interval]));
 
         rows = rawPayments.map((p: any) => ({
           ...p,
           workspace_name: wsMap.get(p.workspace_id) || null,
           product_name: prMap.get(p.product_id) || null,
           plan_name: plMap.get(p.plan_id) || null,
+          billing_interval: prcMap.get(p.price_id) || 'month',
         }));
       } else {
         rows = [];
@@ -91,6 +98,7 @@ export async function GET() {
       workspaceName: p.workspace_name || 'Clínica Sin Nombre',
       productName: p.product_name || 'Axioma App',
       planName: p.plan_name || (p.amount === 0 ? 'Acceso Demo' : 'Plan Estándar'),
+      billingInterval: p.billing_interval || 'month',
       paymentMethod: p.payment_method || 'TRANSFER',
       amount: p.amount,
       currency: p.currency || 'USD',
