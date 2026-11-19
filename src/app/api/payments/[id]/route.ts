@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,48 +18,105 @@ export async function POST(
       return NextResponse.json({ error: 'Acción inválida. Se requiere APPROVE o REJECT.' }, { status: 400 });
     }
 
-    // 1. Obtener detalles del pago
-    const rows = await sql`
-      SELECT 
-        mp.*,
-        w.name as workspace_name,
-        pr.name as product_name,
-        pl.name as plan_name
-      FROM "manual_payments" mp
-      LEFT JOIN "workspaces" w ON mp.workspace_id = w.id
-      LEFT JOIN "products" pr ON mp.product_id = pr.id
-      LEFT JOIN "plans" pl ON mp.plan_id = pl.id
-      WHERE mp.id = ${id}
-      LIMIT 1
-    `;
+    const newStatus = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+    let payment: any = null;
 
-    if (!rows || rows.length === 0) {
-      return NextResponse.json({ error: 'Pago no encontrado' }, { status: 404 });
+    // 1. Intentar con SQL directo si existe DATABASE_URL
+    if (process.env.DATABASE_URL) {
+      try {
+        const rows = await sql`
+          SELECT 
+            mp.*,
+            w.name as workspace_name,
+            pr.name as product_name,
+            pl.name as plan_name
+          FROM "manual_payments" mp
+          LEFT JOIN "workspaces" w ON mp.workspace_id = w.id
+          LEFT JOIN "products" pr ON mp.product_id = pr.id
+          LEFT JOIN "plans" pl ON mp.plan_id = pl.id
+          WHERE mp.id = ${id}
+          LIMIT 1
+        `;
+
+        if (rows && rows.length > 0) {
+          payment = rows[0];
+          await sql`
+            UPDATE "manual_payments"
+            SET 
+              status = ${newStatus},
+              reviewed_at = now(),
+              rejection_reason = ${reason || null}
+            WHERE id = ${id}
+          `;
+
+          if (newStatus === 'APPROVED' && payment.workspace_id && payment.product_id) {
+            try {
+              await sql`
+                INSERT INTO "early_access_grants" ("workspace_id", "product_id", "granted_at")
+                VALUES (${payment.workspace_id}, ${payment.product_id}, now())
+                ON CONFLICT DO NOTHING
+              `;
+            } catch (grantErr) {
+              console.warn('[Grant Error]:', grantErr);
+            }
+          }
+        }
+      } catch (sqlErr) {
+        console.warn('[Console Payments Action] sql directo falló, usando fallback supabaseAdmin:', sqlErr);
+      }
     }
 
-    const payment = rows[0];
-    const newStatus = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+    // Fallback con supabaseAdmin
+    if (!payment) {
+      const { data: rawPayment, error: fetchErr } = await supabaseAdmin
+        .from('manual_payments')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-    // 2. Actualizar estado del pago en PostgreSQL
-    await sql`
-      UPDATE "manual_payments"
-      SET 
-        status = ${newStatus},
-        reviewed_at = now(),
-        rejection_reason = ${reason || null}
-      WHERE id = ${id}
-    `;
+      if (fetchErr || !rawPayment) {
+        return NextResponse.json({ error: 'Pago no encontrado' }, { status: 404 });
+      }
 
-    // Si es aprobado, asegurar que el workspace tenga su early_access_grant otorgado
-    if (newStatus === 'APPROVED' && payment.workspace_id && payment.product_id) {
-      try {
-        await sql`
-          INSERT INTO "early_access_grants" ("workspace_id", "product_id", "granted_at")
-          VALUES (${payment.workspace_id}, ${payment.product_id}, now())
-          ON CONFLICT DO NOTHING
-        `;
-      } catch (grantErr) {
-        console.warn('[Grant Error]:', grantErr);
+      // Obtener nombres relacionados
+      const [wsRes, prRes, plRes] = await Promise.all([
+        rawPayment.workspace_id ? supabaseAdmin.from('workspaces').select('name').eq('id', rawPayment.workspace_id).single() : { data: null },
+        rawPayment.product_id ? supabaseAdmin.from('products').select('name').eq('id', rawPayment.product_id).single() : { data: null },
+        rawPayment.plan_id ? supabaseAdmin.from('plans').select('name').eq('id', rawPayment.plan_id).single() : { data: null },
+      ]);
+
+      payment = {
+        ...rawPayment,
+        workspace_name: wsRes.data?.name || null,
+        product_name: prRes.data?.name || null,
+        plan_name: plRes.data?.name || null,
+      };
+
+      const { error: updateErr } = await supabaseAdmin
+        .from('manual_payments')
+        .update({
+          status: newStatus,
+          reviewed_at: new Date().toISOString(),
+          rejection_reason: reason || null,
+        })
+        .eq('id', id);
+
+      if (updateErr) {
+        throw new Error(updateErr.message);
+      }
+
+      if (newStatus === 'APPROVED' && payment.workspace_id && payment.product_id) {
+        try {
+          await supabaseAdmin
+            .from('early_access_grants')
+            .upsert({
+              workspace_id: payment.workspace_id,
+              product_id: payment.product_id,
+              granted_at: new Date().toISOString(),
+            });
+        } catch (grantErr) {
+          console.warn('[Grant Error]:', grantErr);
+        }
       }
     }
 
@@ -66,7 +124,7 @@ export async function POST(
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 
-    if (botToken && adminChatId) {
+    if (botToken && adminChatId && payment) {
       const isApproved = newStatus === 'APPROVED';
       const icon = isApproved ? '✅' : '❌';
       const title = isApproved ? 'PAGO / DEMO APROBADO EXITOSAMENTE' : 'PAGO RECHAZADO';
