@@ -205,6 +205,31 @@ export default function ConsoleDashboard() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    const p = payments.find((item) => item.id === id);
+    const confirmDelete = window.confirm(
+      `¿Deseas eliminar el registro del comprobante "${p?.reference || id}" de "${p?.workspaceName || 'esta clínica'}"?\n\nEsta acción quitará el comprobante de la lista de pagos.`
+    );
+    if (!confirmDelete) return;
+
+    setProcessingId(id);
+    try {
+      const res = await fetch(`/api/payments/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setPayments((prev) => prev.filter((item) => item.id !== id));
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert('Error al eliminar el pago: ' + (errorData.error || 'Error del servidor'));
+      }
+    } catch (err) {
+      alert('Error de red al intentar eliminar.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const handleSendTestAlert = async () => {
     setTesting(true);
     setTestResult(null);
@@ -512,29 +537,41 @@ export default function ConsoleDashboard() {
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-right">
-                          {p.status === 'PENDING' ? (
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => handleAction(p.id, 'APPROVE')}
-                                disabled={processingId === p.id}
-                                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-all disabled:opacity-50 cursor-pointer"
-                              >
-                                Aprobar
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setRejectModalItem(p);
-                                  setRejectReason('');
-                                }}
-                                disabled={processingId === p.id}
-                                className="px-2.5 py-1 rounded-lg bg-red-600/30 hover:bg-red-600 text-red-200 font-medium text-xs transition-all disabled:opacity-50 cursor-pointer"
-                              >
-                                Rechazar
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-slate-500 text-xs">Revisado</span>
-                          )}
+                          <div className="flex items-center justify-end gap-2">
+                            {p.status === 'PENDING' ? (
+                              <>
+                                <button
+                                  onClick={() => handleAction(p.id, 'APPROVE')}
+                                  disabled={processingId === p.id}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-all disabled:opacity-50 cursor-pointer"
+                                >
+                                  Aprobar
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setRejectModalItem(p);
+                                    setRejectReason('');
+                                  }}
+                                  disabled={processingId === p.id}
+                                  className="px-2.5 py-1 rounded-lg bg-red-600/30 hover:bg-red-600 text-red-200 font-medium text-xs transition-all disabled:opacity-50 cursor-pointer"
+                                >
+                                  Rechazar
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-slate-500 text-xs">Revisado</span>
+                            )}
+                            <button
+                              onClick={() => handleDelete(p.id)}
+                              disabled={processingId === p.id}
+                              title="Eliminar comprobante"
+                              className="p-1 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 text-xs transition-all disabled:opacity-50 cursor-pointer"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
