@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { cookies } from 'next/headers';
+import { supabaseAdmin } from './supabaseAdmin';
 
 export const AUTH_COOKIE_NAME = 'axioma_console_session';
 
@@ -52,6 +53,39 @@ export function verifySessionToken(token?: string | null): { email: string } | n
 
 export async function getConsoleSession(): Promise<{ email: string } | null> {
   const cookieStore = await cookies();
+
+  // 1. Verificar cookie directa de consola
   const sessionCookie = cookieStore.get(AUTH_COOKIE_NAME);
-  return verifySessionToken(sessionCookie?.value);
+  const directSession = verifySessionToken(sessionCookie?.value);
+  if (directSession) return directSession;
+
+  // 2. Verificar cookie de sesión SSO de Supabase compartida en .axiomadynamics.com
+  const allCookies = cookieStore.getAll();
+  const sbCookie = allCookies.find(
+    (c) => c.name.startsWith('sb-') && c.name.endsWith('-auth-token')
+  );
+
+  if (sbCookie) {
+    try {
+      let rawVal = sbCookie.value;
+      if (rawVal.startsWith('base64-')) {
+        rawVal = Buffer.from(rawVal.replace('base64-', ''), 'base64').toString('utf-8');
+      }
+      const parsed = JSON.parse(rawVal);
+      const accessToken = Array.isArray(parsed) ? parsed[0] : (parsed.access_token || parsed[0]);
+
+      if (accessToken) {
+        const { data: { user }, error } = await supabaseAdmin.auth.getUser(accessToken);
+        if (!error && user && user.email) {
+          if (isAuthorizedAdmin(user.email)) {
+            return { email: user.email };
+          }
+        }
+      }
+    } catch {
+      // Ignorar fallo de parseo
+    }
+  }
+
+  return null;
 }
