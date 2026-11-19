@@ -59,11 +59,39 @@ export default function ConsoleDashboard() {
   // Check auth session
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
+    const authToken = urlParams.get('auth_token');
     const err = urlParams.get('error');
+
     if (err === 'unauthorized_email') {
       setAuthError('Acceso Denegado: Tu cuenta de Google no está autorizada como administrador.');
     } else if (err) {
       setAuthError('Error de autenticación con Google. Inténtalo de nuevo.');
+    }
+
+    // Si viene token firmado desde el SSO de Core
+    if (authToken) {
+      fetch('/api/auth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ authToken }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.success && data.email) {
+            setIsAuthenticated(true);
+            setUserEmail(data.email);
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } else {
+            setAuthError('Acceso Denegado: Tu cuenta de Google no está autorizada como administrador.');
+          }
+        })
+        .catch(() => {
+          setAuthError('Error de conexión al validar sesión');
+        })
+        .finally(() => {
+          setCheckingAuth(false);
+        });
+      return;
     }
 
     const checkSession = async () => {
