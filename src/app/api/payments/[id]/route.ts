@@ -162,18 +162,18 @@ export async function POST(
         }
       }
 
-      // 5.3 Conceder Entitlements para el módulo correspondiente
+      // 5.3 Conceder Entitlements para el módulo correspondiente (tabla física: workspace_entitlements)
       if (payment.workspace_id) {
         try {
           const { data: existingEnts } = await supabaseAdmin
-            .from('entitlements')
+            .from('workspace_entitlements')
             .select('id')
             .eq('workspace_id', payment.workspace_id)
             .eq('module_id', moduleId);
 
           if (existingEnts && existingEnts.length > 0) {
             await supabaseAdmin
-              .from('entitlements')
+              .from('workspace_entitlements')
               .update({
                 status: 'active',
                 updated_at: nowIso,
@@ -181,7 +181,7 @@ export async function POST(
               .eq('id', existingEnts[0].id);
           } else {
             await supabaseAdmin
-              .from('entitlements')
+              .from('workspace_entitlements')
               .insert({
                 id: crypto.randomUUID(),
                 workspace_id: payment.workspace_id,
