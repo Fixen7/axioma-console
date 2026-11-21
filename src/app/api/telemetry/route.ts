@@ -99,6 +99,25 @@ function formatTelegramAlert(payload: TelemetryPayload): string {
   return text;
 }
 
+export async function GET() {
+  try {
+    const { supabaseAdmin } = await import('@/lib/supabaseAdmin');
+    const { data, error } = await supabaseAdmin
+      .from('audit_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, logs: data || [] });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: TelemetryPayload = await request.json();
@@ -108,6 +127,32 @@ export async function POST(request: NextRequest) {
         { error: 'Parámetros inválidos. Se requiere title y message.' },
         { status: 400 }
       );
+    }
+
+    // Persistir el evento de telemetría en audit_logs de Supabase
+    try {
+      const { supabaseAdmin } = await import('@/lib/supabaseAdmin');
+      await supabaseAdmin.from('audit_logs').insert({
+        workspace_id: body.workspaceId || null,
+        actor_email: body.userEmail || null,
+        action: `TELEMETRY_${(body.severity || 'INFO').toUpperCase()}`,
+        module: body.appId || 'system',
+        target_type: body.category || 'general',
+        target_id: body.code ? String(body.code) : null,
+        summary: `${body.title}: ${body.message}`,
+        metadata: {
+          severity: body.severity || 'info',
+          category: body.category || 'general',
+          code: body.code,
+          table: body.table,
+          operation: body.operation,
+          url: body.url,
+          context: body.context,
+          errorStack: body.errorStack,
+        }
+      });
+    } catch (dbErr) {
+      console.warn('[Console Telemetry] Error al guardar en audit_logs:', dbErr);
     }
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN || '9028028768:AAHbISh0m3W_Xs4vlRnK-sOxZvWoJEgx6h8';

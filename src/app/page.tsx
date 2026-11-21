@@ -15,7 +15,11 @@ import {
   Server,
   AlertTriangle,
   BadgeAlert,
-  Sparkles
+  Sparkles,
+  Terminal,
+  FileText,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface PaymentItem {
@@ -59,6 +63,13 @@ export default function ConsoleDashboard() {
   const [testing, setTesting] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<'database' | 'payments' | 'build' | 'auth'>('database');
+
+  // Logs / Telemetry Feed State
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState<boolean>(false);
+  const [logFilter, setLogFilter] = useState<'ALL' | 'ERROR' | 'PAYMENTS' | 'AUTH' | 'CORE'>('ALL');
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [showSimulator, setShowSimulator] = useState<boolean>(false);
 
   // Check auth session
   useEffect(() => {
@@ -148,10 +159,27 @@ export default function ConsoleDashboard() {
     }
   };
 
+  // Fetch Telemetry & Audit Logs
+  const fetchLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      const res = await fetch('/api/telemetry');
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data.logs || []);
+      }
+    } catch (err) {
+      console.error('Error cargando logs:', err);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchPayments();
       runUptimeCheck();
+      fetchLogs();
     }
   }, [isAuthenticated]);
 
@@ -456,8 +484,8 @@ export default function ConsoleDashboard() {
                 : 'text-slate-400 hover:text-white hover:bg-slate-900'
             }`}
           >
-            <Send className="w-4 h-4" />
-            Simulador de Telemetría
+            <Activity className="w-4 h-4" />
+            Telemetría & Logs del Sistema
           </button>
         </div>
 
@@ -715,76 +743,257 @@ export default function ConsoleDashboard() {
           </div>
         )}
 
-        {/* TAB 3: SIMULADOR DE TELEMETRÍA */}
+        {/* TAB 3: TELEMETRÍA Y LOGS DEL SISTEMA */}
         {activeTab === 'telemetry' && (
-          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm space-y-6">
-            <div>
-              <h2 className="text-lg font-semibold text-white">Disparador de Telemetría a Telegram</h2>
-              <p className="text-xs text-slate-400">Prueba la entrega inmediata de alertas críticas a tu celular</p>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-slate-400 mb-2 block">
-                  Selecciona el tipo de incidente a simular:
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    { id: 'database', label: '🗄️ Supabase', color: 'border-emerald-500/40 bg-emerald-500/5' },
-                    { id: 'payments', label: '💳 Pagos', color: 'border-amber-500/40 bg-amber-500/5' },
-                    { id: 'build', label: '📦 Vercel Build', color: 'border-blue-500/40 bg-blue-500/5' },
-                    { id: 'auth', label: '🔐 Login / Auth', color: 'border-purple-500/40 bg-purple-500/5' },
-                  ].map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id as any)}
-                      className={`px-3 py-2.5 rounded-xl text-xs font-medium border text-left transition-all ${
-                        selectedCategory === cat.id
-                          ? `${cat.color} text-white ring-1 ring-indigo-500/50`
-                          : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
+          <div className="space-y-6">
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <Activity className="w-5 h-5 text-indigo-400" />
+                    Telemetría & Auditoría del Sistema
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Registros en tiempo real de pagos, autenticación, errores y telemetría de Axioma
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={fetchLogs}
+                    disabled={loadingLogs}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingLogs ? 'animate-spin' : ''}`} />
+                    Actualizar Logs
+                  </button>
+                  <button
+                    onClick={() => setShowSimulator(!showSimulator)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs border border-indigo-500/30 transition-colors"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    {showSimulator ? 'Ocultar Simulador' : 'Simulador Telegram'}
+                  </button>
                 </div>
               </div>
 
-              <div className="pt-2">
-                <button
-                  onClick={handleSendTestAlert}
-                  disabled={testing}
-                  className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-50"
-                >
-                  {testing ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Despachando...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      Enviar Alerta a mi Telegram
-                    </>
-                  )}
-                </button>
+              {/* Filtros */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-800/80">
+                {[
+                  { id: 'ALL', label: 'Todos los Registros' },
+                  { id: 'ERROR', label: '🚨 Errores y Alertas' },
+                  { id: 'PAYMENTS', label: '💳 Pagos y Facturación' },
+                  { id: 'AUTH', label: '🔐 Autenticación' },
+                  { id: 'CORE', label: '⚙️ Core' },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setLogFilter(f.id as any)}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                      logFilter === f.id
+                        ? 'bg-indigo-600 text-white shadow'
+                        : 'bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
               </div>
 
-              {testResult && (
-                <div className={`p-4 rounded-xl text-xs flex items-start gap-3 border ${
-                  testResult.success 
-                    ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300' 
-                    : 'bg-red-950/40 border-red-800/60 text-red-300'
-                }`}>
-                  {testResult.success ? (
-                    <CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-400 shrink-0" />
-                  ) : (
-                    <XCircle className="w-4 h-4 mt-0.5 text-red-400 shrink-0" />
-                  )}
-                  <span>{testResult.message}</span>
+              {/* Lista de Logs */}
+              {loadingLogs ? (
+                <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-indigo-500/40 border-t-indigo-500 rounded-full animate-spin" />
+                  Cargando registros de telemetría...
+                </div>
+              ) : logs.length === 0 ? (
+                <div className="p-12 text-center border border-dashed border-slate-800 rounded-xl text-slate-500 text-sm">
+                  No hay registros de auditoría o telemetría disponibles.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {logs
+                    .filter((log) => {
+                      if (logFilter === 'ALL') return true;
+                      if (logFilter === 'ERROR') {
+                        return (
+                          log.action?.includes('FAIL') || 
+                          log.action?.includes('ERROR') || 
+                          log.action?.includes('CRITICAL') || 
+                          log.metadata?.severity === 'critical'
+                        );
+                      }
+                      if (logFilter === 'PAYMENTS') {
+                        return (
+                          log.module === 'payments' || 
+                          log.module === 'billing' || 
+                          log.action?.includes('PAYMENT')
+                        );
+                      }
+                      if (logFilter === 'AUTH') {
+                        return log.action?.includes('LOGIN') || log.action?.includes('AUTH');
+                      }
+                      if (logFilter === 'CORE') {
+                        return log.module === 'core';
+                      }
+                      return true;
+                    })
+                    .map((log) => {
+                      const isError = 
+                        log.action?.includes('FAIL') || 
+                        log.action?.includes('ERROR') || 
+                        log.action?.includes('CRITICAL') ||
+                        log.metadata?.severity === 'critical';
+                      const isSuccess = 
+                        log.action?.includes('APPROVED') || 
+                        log.action?.includes('SUCCESS') ||
+                        log.action?.includes('LOGIN');
+                      const isExpanded = expandedLogId === log.id;
+
+                      return (
+                        <div
+                          key={log.id}
+                          className={`p-4 rounded-xl border transition-all ${
+                            isError
+                              ? 'bg-red-950/20 border-red-900/50 hover:border-red-700/60'
+                              : isSuccess
+                              ? 'bg-emerald-950/10 border-emerald-900/40 hover:border-emerald-700/50'
+                              : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  isError
+                                    ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                    : isSuccess
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                    : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                                }`}
+                              >
+                                {log.action}
+                              </span>
+                              <span className="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-300 font-mono">
+                                {log.module || 'system'}
+                              </span>
+                              {log.actor_email && (
+                                <span className="text-xs text-slate-400 font-mono">
+                                  {log.actor_email}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-slate-500 font-mono shrink-0">
+                              {new Date(log.created_at).toLocaleString()}
+                            </span>
+                          </div>
+
+                          <p className="mt-2 text-xs text-slate-200">
+                            {log.summary || 'Sin descripción'}
+                          </p>
+
+                          {log.metadata && Object.keys(log.metadata).length > 0 && (
+                            <div className="mt-2">
+                              <button
+                                onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                                className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-mono transition-colors"
+                              >
+                                {isExpanded ? (
+                                  <>
+                                    <ChevronUp className="w-3.5 h-3.5" />
+                                    Ocultar detalles
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                    Ver payload y metadata
+                                  </>
+                                )}
+                              </button>
+
+                              {isExpanded && (
+                                <pre className="mt-2 p-3 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-300 overflow-x-auto font-mono">
+                                  {JSON.stringify(log.metadata, null, 2)}
+                                </pre>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               )}
             </div>
+
+            {/* SIMULADOR DE TELEMETRÍA (COLAPSABLE) */}
+            {showSimulator && (
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Simulador de Telemetría a Telegram</h3>
+                  <p className="text-xs text-slate-400">Prueba el envío de alertas de diagnóstico a tu celular</p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-400 mb-2 block">
+                    Selecciona el tipo de incidente a simular:
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: 'database', label: '🗄️ Supabase', color: 'border-emerald-500/40 bg-emerald-500/5' },
+                      { id: 'payments', label: '💳 Pagos', color: 'border-amber-500/40 bg-amber-500/5' },
+                      { id: 'build', label: '📦 Vercel Build', color: 'border-blue-500/40 bg-blue-500/5' },
+                      { id: 'auth', label: '🔐 Login / Auth', color: 'border-purple-500/40 bg-purple-500/5' },
+                    ].map((cat) => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setSelectedCategory(cat.id as any)}
+                        className={`px-3 py-2.5 rounded-xl text-xs font-medium border text-left transition-all ${
+                          selectedCategory === cat.id
+                            ? `${cat.color} text-white ring-1 ring-indigo-500/50`
+                            : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={handleSendTestAlert}
+                    disabled={testing}
+                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-50"
+                  >
+                    {testing ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Despachando...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Enviar Alerta a mi Telegram
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {testResult && (
+                  <div className={`p-4 rounded-xl text-xs flex items-start gap-3 border ${
+                    testResult.success 
+                      ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300' 
+                      : 'bg-red-950/40 border-red-800/60 text-red-300'
+                  }`}>
+                    {testResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-400 shrink-0" />
+                    ) : (
+                      <XCircle className="w-4 h-4 mt-0.5 text-red-400 shrink-0" />
+                    )}
+                    <span>{testResult.message}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
