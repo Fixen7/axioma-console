@@ -176,7 +176,7 @@ export async function POST(
               .from('workspace_entitlements')
               .update({
                 status: 'active',
-                updated_at: nowIso,
+                expires_at: nextBillingIso,
               })
               .eq('id', existingEnts[0].id);
           } else {
@@ -188,8 +188,7 @@ export async function POST(
                 module_id: moduleId,
                 source_type: 'subscription_item',
                 status: 'active',
-                created_at: nowIso,
-                updated_at: nowIso,
+                expires_at: nextBillingIso,
               });
           }
         } catch (entErr) {
