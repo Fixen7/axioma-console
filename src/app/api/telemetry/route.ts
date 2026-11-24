@@ -155,8 +155,16 @@ export async function POST(request: NextRequest) {
       console.warn('[Console Telemetry] Error al guardar en audit_logs:', dbErr);
     }
 
-    const botToken = process.env.TELEGRAM_BOT_TOKEN || '9028028768:AAHbISh0m3W_Xs4vlRnK-sOxZvWoJEgx6h8';
-    const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID || '6022360968';
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+
+    if (!botToken || !adminChatId) {
+      console.warn('[Console Telemetry] TELEGRAM_BOT_TOKEN o TELEGRAM_ADMIN_CHAT_ID no configurados. Se omite envío a Telegram.');
+      return NextResponse.json({
+        success: true,
+        message: 'Telemetry guardado en audit_logs (alerta Telegram omitida por falta de configuración de entorno)',
+      });
+    }
 
     const text = formatTelegramAlert(body);
 
