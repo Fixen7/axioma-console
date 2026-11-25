@@ -101,6 +101,12 @@ function formatTelegramAlert(payload: TelemetryPayload): string {
 
 export async function GET() {
   try {
+    const { getConsoleSession } = await import('@/lib/auth');
+    const session = await getConsoleSession();
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { supabaseAdmin } = await import('@/lib/supabaseAdmin');
     const { data, error } = await supabaseAdmin
       .from('audit_logs')

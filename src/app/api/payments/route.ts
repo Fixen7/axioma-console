@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { getConsoleSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    const session = await getConsoleSession();
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     let rows: any[] = [];
 
     if (process.env.DATABASE_URL) {

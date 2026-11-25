@@ -18,8 +18,17 @@ export function isAuthorizedAdmin(email?: string | null): boolean {
   return adminEmails.includes(email.trim().toLowerCase());
 }
 
+function getSessionSecret(): string {
+  const secret = process.env.CONSOLE_SESSION_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV !== 'production') {
+    return 'axioma-console-local-dev-secret-only';
+  }
+  throw new Error('CONSOLE_SESSION_SECRET is required in production');
+}
+
 export function createSessionToken(email: string): string {
-  const secret = process.env.CONSOLE_SESSION_SECRET || 'AX2026Fxn19971554ConsoleAuthSecret';
+  const secret = getSessionSecret();
   const payload = JSON.stringify({
     email: email.trim().toLowerCase(),
     exp: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 días
@@ -35,7 +44,12 @@ export function verifySessionToken(token?: string | null): { email: string } | n
   if (parts.length !== 2) return null;
   const [b64Payload, sig] = parts;
 
-  const secret = process.env.CONSOLE_SESSION_SECRET || 'AX2026Fxn19971554ConsoleAuthSecret';
+  let secret: string;
+  try {
+    secret = getSessionSecret();
+  } catch {
+    return null;
+  }
   const expectedSig = crypto.createHmac('sha256', secret).update(b64Payload).digest('base64url');
   if (sig !== expectedSig) return null;
 
