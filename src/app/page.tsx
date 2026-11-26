@@ -706,13 +706,14 @@ export default function ConsoleDashboard() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 { name: 'Axioma Vet', url: 'https://vet.axiomadynamics.com', key: 'Axioma Vet' },
-                { name: 'Axioma Core / Portal', url: 'https://app.axiomadynamics.com', key: 'Axioma Core / Portal' },
-                { name: 'Supabase Database', url: 'gnfyveyqhjsugdlxnupx.supabase.co', key: 'Supabase Cloud Database' },
+                { name: 'Axioma Core', url: 'https://core.axiomadynamics.com', key: 'Axioma Core' },
+                { name: 'Axioma Landing', url: 'https://axiomadynamics.com', key: 'Axioma Landing Page' },
+                { name: 'Base de Datos', url: 'Supabase PostgreSQL', key: 'PostgreSQL Production DB' },
               ].map((svc) => {
-                const res = uptimeData?.results?.[svc.key];
+                const res = uptimeData?.metrics?.[svc.key] || uptimeData?.results?.[svc.key];
                 const isHealthy = res?.status === 'healthy';
 
                 return (
