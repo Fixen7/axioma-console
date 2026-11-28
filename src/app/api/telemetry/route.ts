@@ -165,10 +165,11 @@ export async function POST(request: NextRequest) {
     const isClientTelemetry = body.category === 'ui' || body.category === 'network' || body.category === 'user_report';
     const shouldDispatchImmediate = body.immediate === true || (body.immediate !== false && !isClientTelemetry && body.severity === 'critical');
 
+    let dbError: string | null = null;
     // Persistir el evento de telemetría saneado en audit_logs de Supabase
     try {
       const { supabaseAdmin } = await import('@/lib/supabaseAdmin');
-      await supabaseAdmin.from('audit_logs').insert({
+      const insRes = await supabaseAdmin.from('audit_logs').insert({
         workspace_id: body.workspaceId || null,
         actor_email: body.userEmail || null,
         actor_name: body.userEmail || 'Sistema Telemetría',
@@ -189,7 +190,12 @@ export async function POST(request: NextRequest) {
           notified: shouldDispatchImmediate,
         }
       });
-    } catch (dbErr) {
+      if (insRes.error) {
+        dbError = insRes.error.message;
+        console.error('[Console Telemetry] Error insertando en audit_logs:', insRes.error);
+      }
+    } catch (dbErr: any) {
+      dbError = dbErr?.message || String(dbErr);
       console.warn('[Console Telemetry] Error al guardar en audit_logs:', dbErr);
     }
 
@@ -198,6 +204,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         queuedForDigest: true,
+        dbError,
         message: 'Evento registrado y protegido. Se incluirá en el reporte consolidado de 10 minutos.',
       });
     }
