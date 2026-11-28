@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { sanitizeString, sanitizeObject } from '@/lib/sanitizer';
 
 interface TelemetryPayload {
   appId?: string;
@@ -17,6 +18,7 @@ interface TelemetryPayload {
   context?: Record<string, unknown>;
   errorStack?: string;
   timestamp?: string;
+  immediate?: boolean;
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -126,21 +128,50 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body: TelemetryPayload = await request.json();
+    const rawBody: TelemetryPayload = await request.json();
 
-    if (!body || !body.title || !body.message) {
+    if (!rawBody || !rawBody.title || !rawBody.message) {
       return NextResponse.json(
         { error: 'Parámetros inválidos. Se requiere title y message.' },
         { status: 400 }
       );
     }
 
-    // Persistir el evento de telemetría en audit_logs de Supabase
+    // Saneamiento de seguridad de todos los campos para evitar fugas de datos
+    const body: TelemetryPayload = {
+      appId: sanitizeString(rawBody.appId || 'axioma-app'),
+      environment: sanitizeString(rawBody.environment || process.env.NODE_ENV || 'production'),
+      category: rawBody.category || 'general',
+      severity: rawBody.severity || 'info',
+      title: sanitizeString(rawBody.title),
+      message: sanitizeString(rawBody.message),
+      code: rawBody.code ? sanitizeString(String(rawBody.code)) : undefined,
+      table: rawBody.table ? sanitizeString(rawBody.table) : undefined,
+      operation: rawBody.operation ? sanitizeString(rawBody.operation) : undefined,
+      url: rawBody.url ? sanitizeString(rawBody.url) : undefined,
+      workspaceId: rawBody.workspaceId ? sanitizeString(rawBody.workspaceId) : undefined,
+      userId: rawBody.userId ? sanitizeString(rawBody.userId) : undefined,
+      userEmail: rawBody.userEmail ? sanitizeString(rawBody.userEmail) : undefined,
+      context: rawBody.context ? sanitizeObject(rawBody.context) : undefined,
+      errorStack: rawBody.errorStack ? sanitizeString(rawBody.errorStack) : undefined,
+      timestamp: rawBody.timestamp || new Date().toISOString(),
+      immediate: rawBody.immediate,
+    };
+
+    // Política de despacho inmediato vs reporte consolidado (Digest 10 min):
+    // - Errores de cliente (UI, reportes de usuario, red del cliente) se agrupan cada 10 min.
+    // - Errores explícitamente marcados con immediate === false se agrupan.
+    // - Errores críticos de infraestructura o pagos sin immediate: false se despachan de inmediato.
+    const isClientTelemetry = body.category === 'ui' || body.category === 'network' || body.category === 'user_report';
+    const shouldDispatchImmediate = body.immediate === true || (body.immediate !== false && !isClientTelemetry && body.severity === 'critical');
+
+    // Persistir el evento de telemetría saneado en audit_logs de Supabase
     try {
       const { supabaseAdmin } = await import('@/lib/supabaseAdmin');
       await supabaseAdmin.from('audit_logs').insert({
         workspace_id: body.workspaceId || null,
         actor_email: body.userEmail || null,
+        actor_name: body.userEmail || 'Sistema Telemetría',
         action: `TELEMETRY_${(body.severity || 'INFO').toUpperCase()}`,
         module: body.appId || 'system',
         target_type: body.category || 'general',
@@ -155,10 +186,20 @@ export async function POST(request: NextRequest) {
           url: body.url,
           context: body.context,
           errorStack: body.errorStack,
+          notified: shouldDispatchImmediate,
         }
       });
     } catch (dbErr) {
       console.warn('[Console Telemetry] Error al guardar en audit_logs:', dbErr);
+    }
+
+    // Si está configurado para consolidarse cada 10 minutos mediante cron:
+    if (!shouldDispatchImmediate) {
+      return NextResponse.json({
+        success: true,
+        queuedForDigest: true,
+        message: 'Evento registrado y protegido. Se incluirá en el reporte consolidado de 10 minutos.',
+      });
     }
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -168,7 +209,7 @@ export async function POST(request: NextRequest) {
       console.warn('[Console Telemetry] TELEGRAM_BOT_TOKEN o TELEGRAM_ADMIN_CHAT_ID no configurados. Se omite envío a Telegram.');
       return NextResponse.json({
         success: true,
-        message: 'Telemetry guardado en audit_logs (alerta Telegram omitida por falta de configuración de entorno)',
+        message: 'Telemetry guardado en audit_logs (alerta Telegram omitida por falta de credenciales)',
       });
     }
 
