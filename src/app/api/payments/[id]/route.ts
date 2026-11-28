@@ -97,22 +97,36 @@ export async function POST(
     }
     const nextBillingIso = nextBillingDate.toISOString();
 
-    // 4. Actualizar estado en manual_payments
-    const { error: updateErr } = await supabaseAdmin
+    // 4. Actualizar estado en manual_payments (primero en minúsculas por compatibilidad con la restricción de producción)
+    let updateErr: any = null;
+    const { error: errLower } = await supabaseAdmin
       .from('manual_payments')
       .update({
-        status: newStatus,
+        status: newStatus.toLowerCase(),
         reviewed_at: nowIso,
-        rejection_reason: newStatus === 'REJECTED' ? (reason || 'Comprobante no verificado') : null,
+        rejection_reason: action === 'REJECT' ? (reason || 'Comprobante no verificado') : null,
       })
       .eq('id', id);
+
+    if (errLower) {
+      // Reintentar con mayúsculas si el esquema espera mayúsculas
+      const { error: errUpper } = await supabaseAdmin
+        .from('manual_payments')
+        .update({
+          status: newStatus.toUpperCase(),
+          reviewed_at: nowIso,
+          rejection_reason: action === 'REJECT' ? (reason || 'Comprobante no verificado') : null,
+        })
+        .eq('id', id);
+      updateErr = errUpper;
+    }
 
     if (updateErr) {
       throw new Error(`Error actualizando manual_payments: ${updateErr.message}`);
     }
 
     // 5. ACCIONES ESPECÍFICAS SEGÚN ACCIÓN
-    if (newStatus === 'APPROVED') {
+    if (action === 'APPROVE') {
       // 5.1 Conceder Early Access si aplica
       if (payment.workspace_id && payment.product_id) {
         try {
@@ -257,7 +271,7 @@ export async function POST(
           console.warn('[Console Approve] Audit log insert warning:', auditErr);
         }
       }
-    } else if (newStatus === 'REJECTED') {
+    } else if (action === 'REJECT') {
       // 5.6 Limpiar Early Access si fue rechazado para liberar el cupo inmediatamente
       if (payment.workspace_id && payment.product_id) {
         try {
@@ -308,7 +322,7 @@ export async function POST(
     const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 
     if (botToken && adminChatId) {
-      const isApproved = newStatus === 'APPROVED';
+      const isApproved = action === 'APPROVE';
       const icon = isApproved ? '✅' : '❌';
       const title = isApproved ? 'PAGO APROBADO Y ACCESO CONCEDIDO' : 'PAGO RECHAZADO';
       const clinic = payment.workspace_name;
