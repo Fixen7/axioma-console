@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
         action: `TELEMETRY_${(body.severity || 'INFO').toUpperCase()}`,
         module: body.appId || 'system',
         target_type: body.category || 'general',
-        target_id: body.code ? String(body.code) : null,
+        target_id: body.code ? String(body.code) : (targetWorkspaceId || 'telemetry_event'),
         summary: `${body.title}: ${body.message}`,
         metadata: {
           severity: body.severity || 'info',
