@@ -187,7 +187,7 @@ export async function POST(request: NextRequest) {
       const insRes = await supabaseAdmin.from('audit_logs').insert({
         workspace_id: targetWorkspaceId,
         actor_user_id: targetUserId,
-        actor_email: body.userEmail || null,
+        actor_email: body.userEmail || 'telemetry@axiomadynamics.com',
         actor_name: body.userEmail || 'Sistema Telemetría',
         action: `TELEMETRY_${(body.severity || 'INFO').toUpperCase()}`,
         module: body.appId || 'system',
