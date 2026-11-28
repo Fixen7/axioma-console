@@ -317,7 +317,34 @@ export async function POST(
       }
     }
 
-    // 6. Enviar notificación a Telegram con el resultado
+    // 6. Invalidador de caché en tiempo real para AXIOMA CORE (evita cualquier condición desactualizada)
+    try {
+      const coreBaseUrls = [
+        process.env.CORE_URL || 'https://core.axiomadynamics.com',
+        'https://staging.axiomadynamics.com',
+      ];
+      const consoleSecret = process.env.CONSOLE_SESSION_SECRET;
+
+      for (const baseUrl of coreBaseUrls) {
+        fetch(`${baseUrl}/api/internal/revalidate-cache`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(consoleSecret ? { Authorization: `Bearer ${consoleSecret}` } : {}),
+          },
+          body: JSON.stringify({
+            workspaceId: payment.workspace_id,
+            timestamp: Date.now(),
+          }),
+        }).catch((purgeErr) => {
+          console.warn(`[Cache Purge Warning] Could not notify ${baseUrl}:`, purgeErr);
+        });
+      }
+    } catch (cacheErr) {
+      console.warn('[Cache Purge Error]', cacheErr);
+    }
+
+    // 7. Enviar notificación a Telegram con el resultado
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
 
