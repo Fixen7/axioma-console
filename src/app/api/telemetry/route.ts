@@ -177,8 +177,16 @@ export async function POST(request: NextRequest) {
         targetWorkspaceId = defaultWs?.id || null;
       }
 
+      // Si no viene userId, obtener un usuario válido para satisfacer la restricción NOT NULL de la base de datos
+      let targetUserId = body.userId || null;
+      if (!targetUserId) {
+        const { data: defaultUser } = await supabaseAdmin.from('users').select('id').limit(1).maybeSingle();
+        targetUserId = defaultUser?.id || null;
+      }
+
       const insRes = await supabaseAdmin.from('audit_logs').insert({
         workspace_id: targetWorkspaceId,
+        actor_user_id: targetUserId,
         actor_email: body.userEmail || null,
         actor_name: body.userEmail || 'Sistema Telemetría',
         action: `TELEMETRY_${(body.severity || 'INFO').toUpperCase()}`,
