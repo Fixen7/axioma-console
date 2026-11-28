@@ -105,11 +105,11 @@ export async function GET() {
       productName: p.product_name || 'Axioma App',
       planName: p.plan_name || (p.amount === 0 ? 'Acceso Demo' : 'Plan Estándar'),
       billingInterval: p.billing_interval || 'month',
-      paymentMethod: p.payment_method || 'TRANSFER',
+      paymentMethod: (p.payment_method || 'TRANSFER').toUpperCase(),
       amount: p.amount,
       currency: p.currency || 'USD',
       reference: p.reference || 'Sin comprobante',
-      status: p.status,
+      status: (p.status || 'PENDING').toUpperCase(),
       createdAt: p.created_at,
       isDemo: p.amount === 0 || (p.payment_method || '').toUpperCase().includes('DEMO'),
     }));

@@ -457,9 +457,9 @@ export default function ConsoleDashboard() {
           >
             <CreditCard className="w-4 h-4" />
             Pagos y Demos por Confirmar
-            {payments.filter((p) => p.status === 'PENDING').length > 0 && (
+            {payments.filter((p) => (p.status || '').toUpperCase() === 'PENDING').length > 0 && (
               <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">
-                {payments.filter((p) => p.status === 'PENDING').length}
+                {payments.filter((p) => (p.status || '').toUpperCase() === 'PENDING').length}
               </span>
             )}
           </button>
@@ -556,9 +556,9 @@ export default function ConsoleDashboard() {
                         </td>
                         <td className="py-3.5 px-4">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide uppercase ${
-                            p.status === 'APPROVED'
+                            (p.status || '').toUpperCase() === 'APPROVED'
                               ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : p.status === 'REJECTED'
+                              : (p.status || '').toUpperCase() === 'REJECTED'
                               ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                               : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                           }`}>
@@ -567,7 +567,7 @@ export default function ConsoleDashboard() {
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {p.status === 'PENDING' ? (
+                            {(p.status || '').toUpperCase() === 'PENDING' ? (
                               <>
                                 <button
                                   onClick={() => handleAction(p.id, 'APPROVE')}
