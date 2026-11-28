@@ -258,6 +258,19 @@ export async function POST(
         }
       }
     } else if (newStatus === 'REJECTED') {
+      // 5.6 Limpiar Early Access si fue rechazado para liberar el cupo inmediatamente
+      if (payment.workspace_id && payment.product_id) {
+        try {
+          await supabaseAdmin
+            .from('early_access_grants')
+            .delete()
+            .eq('workspace_id', payment.workspace_id)
+            .eq('product_id', payment.product_id);
+        } catch (eaErr) {
+          console.warn('[Console Reject] Early access grant delete warning:', eaErr);
+        }
+      }
+
       // Registrar en audit_logs de Core la notificación de rechazo con el motivo
       if (payment.workspace_id) {
         try {
@@ -342,6 +355,25 @@ export async function DELETE(
     const { id } = await params;
     if (!id) {
       return NextResponse.json({ error: 'ID de pago requerido' }, { status: 400 });
+    }
+
+    // Obtener datos del pago antes de borrar para liberar el cupo de Early Access si aplica
+    const { data: paymentToDelete } = await supabaseAdmin
+      .from('manual_payments')
+      .select('workspace_id, product_id')
+      .eq('id', id)
+      .single();
+
+    if (paymentToDelete?.workspace_id && paymentToDelete?.product_id) {
+      try {
+        await supabaseAdmin
+          .from('early_access_grants')
+          .delete()
+          .eq('workspace_id', paymentToDelete.workspace_id)
+          .eq('product_id', paymentToDelete.product_id);
+      } catch (eaDelErr) {
+        console.warn('[Console Delete] Early access cleanup warning:', eaDelErr);
+      }
     }
 
     const { error } = await supabaseAdmin
