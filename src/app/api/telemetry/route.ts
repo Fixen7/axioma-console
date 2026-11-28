@@ -169,8 +169,16 @@ export async function POST(request: NextRequest) {
     // Persistir el evento de telemetría saneado en audit_logs de Supabase
     try {
       const { supabaseAdmin } = await import('@/lib/supabaseAdmin');
+
+      // Si no viene workspaceId (ej. errores de login o visitantes), obtener un workspace válido para satisfacer la restricción NOT NULL de la base de datos
+      let targetWorkspaceId = body.workspaceId || null;
+      if (!targetWorkspaceId) {
+        const { data: defaultWs } = await supabaseAdmin.from('workspaces').select('id').limit(1).maybeSingle();
+        targetWorkspaceId = defaultWs?.id || null;
+      }
+
       const insRes = await supabaseAdmin.from('audit_logs').insert({
-        workspace_id: body.workspaceId || null,
+        workspace_id: targetWorkspaceId,
         actor_email: body.userEmail || null,
         actor_name: body.userEmail || 'Sistema Telemetría',
         action: `TELEMETRY_${(body.severity || 'INFO').toUpperCase()}`,
